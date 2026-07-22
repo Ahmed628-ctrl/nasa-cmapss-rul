@@ -1,13 +1,4 @@
 
-====================================================================
-NASA C-MAPSS — Remaining Useful Life (RUL) Prediction Dashboard
-Deployment Interface powered by XGBoost
-====================================================================
-Required files in the same directory as this script
-    - xgboost_rul_model.pkl   (trained XGBoost model)
-    - model_features.pkl      (list of feature column names, in order)
-    - test_sample_for_streamlit.csv (sample engines for live demo)
-
 
 import joblib
 
