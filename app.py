@@ -142,7 +142,7 @@ WARNING_THRESHOLD = 70
 
 MODEL_PATH = "xgboost_rul_model.json"  # تم تعديل الامتداد إلى json
 FEATURES_PATH = "model_features.pkl"
-TEST_SAMPLE_PATH = "merged_nasa_cmapss.zip"
+TEST_SAMPLE_PATH = "processed_test_sample.csv"
 
 # Model-confidence thresholds, based on R^2 against the held-out sample
 CONF_HIGH_R2 = 0.85
