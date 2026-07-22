@@ -1,78 +1,232 @@
+import os
 import joblib
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 import streamlit as st
-
+ 
 # --------------------------------------------------------------------------
 # PAGE CONFIGURATION
 # --------------------------------------------------------------------------
 st.set_page_config(
-    page_title="RUL Predictive Maintenance | XGBoost",
-    page_icon="✈️",
+    page_title="AeroRUL | Turbofan Prognostics & Health Management",
+    page_icon="🛩️",
     layout="wide",
     initial_sidebar_state="expanded",
 )
-
+ 
 # --------------------------------------------------------------------------
-# CUSTOM CSS — professional, industrial dashboard look
+# CUSTOM CSS — aerospace / avionics-inspired professional theme
 # --------------------------------------------------------------------------
 st.markdown("""
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
-    .main { background-color: #0e1117; }
-    .block-container { padding-top: 2rem; padding-bottom: 2rem; }
+    html, body, [class*="css"]  { font-family: 'Inter', sans-serif; }
+    .main { background-color: #060a12; }
+    .block-container { padding-top: 1.6rem; padding-bottom: 2rem; }
+ 
+    /* ---- Header / title banner ---- */
+    .app-header {
+        background: linear-gradient(120deg, #071427 0%, #0a1c33 45%, #071427 100%);
+        border: 1px solid #123252;
+        border-radius: 16px;
+        padding: 1.4rem 1.8rem;
+        margin-bottom: 1.4rem;
+        box-shadow: 0 6px 20px rgba(0,0,0,0.45);
+    }
+    .app-header h1 {
+        margin: 0;
+        font-size: 1.7rem;
+        font-weight: 800;
+        color: #eaf2ff;
+        letter-spacing: 0.01em;
+    }
+    .app-header p {
+        margin: 0.35rem 0 0 0;
+        color: #7fa8d9;
+        font-size: 0.92rem;
+    }
+ 
+    /* ---- KPI cards ---- */
     .kpi-card {
-        background: linear-gradient(145deg, #1a1f2b, #12151d);
-        border: 1px solid #2a2f3a;
+        background: linear-gradient(150deg, #0d1c30, #081221);
+        border: 1px solid #16324f;
         border-radius: 14px;
-        padding: 1.2rem 1.4rem;
+        padding: 1.1rem 1.3rem;
         text-align: left;
         box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+        height: 100%;
     }
     .kpi-label {
-        color: #8b93a7;
-        font-size: 0.8rem;
+        color: #7fa0c4;
+        font-size: 0.74rem;
+        font-weight: 600;
         text-transform: uppercase;
-        letter-spacing: 0.06em;
-        margin-bottom: 0.3rem;
+        letter-spacing: 0.08em;
+        margin-bottom: 0.4rem;
     }
     .kpi-value {
-        color: #ffffff;
-        font-size: 1.9rem;
+        color: #f2f6fc;
+        font-size: 1.85rem;
         font-weight: 700;
+        font-family: 'JetBrains Mono', monospace;
     }
+    .kpi-sub {
+        color: #4f79a8;
+        font-size: 0.75rem;
+        margin-top: 0.2rem;
+    }
+ 
+    /* ---- Health status badges (per-engine RUL state) ---- */
     .status-badge {
         display: inline-block;
-        padding: 0.35rem 0.9rem;
+        padding: 0.4rem 1rem;
         border-radius: 999px;
         font-weight: 700;
         font-size: 0.95rem;
         letter-spacing: 0.03em;
+        font-family: 'JetBrains Mono', monospace;
     }
     .badge-critical { background-color: #3d1418; color: #ff6b6b; border: 1px solid #ff6b6b; }
     .badge-warning  { background-color: #3d2f10; color: #ffb84d; border: 1px solid #ffb84d; }
     .badge-healthy  { background-color: #10331b; color: #4ade80; border: 1px solid #4ade80; }
-    section[data-testid="stSidebar"] {
-        background-color: #0b0d12;
-        border-right: 1px solid #21252f;
+ 
+    /* ---- Model-confidence badges (model quality, distinct palette) ---- */
+    .conf-badge {
+        display: inline-block;
+        padding: 0.3rem 0.85rem;
+        border-radius: 8px;
+        font-weight: 700;
+        font-size: 0.78rem;
+        letter-spacing: 0.04em;
+        font-family: 'JetBrains Mono', monospace;
     }
-    h1, h2, h3 { color: #f2f4f8 !important; }
+    .conf-high { background-color: #07272e; color: #22d3ee; border: 1px solid #22d3ee; }
+    .conf-mid  { background-color: #332a0c; color: #ffcf5c; border: 1px solid #ffcf5c; }
+    .conf-low  { background-color: #341015; color: #ff8080; border: 1px solid #ff8080; }
+ 
+    section[data-testid="stSidebar"] {
+        background-color: #050810;
+        border-right: 1px solid #10192a;
+    }
+    h1, h2, h3 { color: #eaf2ff !important; }
+    h3 { font-size: 1.15rem !important; }
     .stTabs [data-baseweb="tab"] { font-weight: 600; }
+    hr { border-color: #10192a; }
+    .stCaption, [data-testid="stCaptionContainer"] { color: #4f79a8 !important; }
+ 
+    /* ---- Diagnostic panel (error/help box) ---- */
+    .diag-box {
+        background: #150a0c;
+        border: 1px solid #5c2027;
+        border-radius: 12px;
+        padding: 1rem 1.2rem;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.82rem;
+        color: #ffb3b3;
+        line-height: 1.55;
+    }
+    .diag-box b { color: #ff8080; }
 </style>
 """, unsafe_allow_html=True)
-
+ 
 # --------------------------------------------------------------------------
 # CONSTANTS
 # --------------------------------------------------------------------------
 RUL_MAX = 125          # matches the piecewise-linear clipping used in training
 CRITICAL_THRESHOLD = 30
 WARNING_THRESHOLD = 70
-
+ 
 MODEL_PATH = "xgboost_rul_model.pkl"
 FEATURES_PATH = "model_features.pkl"
 TEST_SAMPLE_PATH = "merged_nasa_cmapss.zip"
-
+ 
+# Model-confidence thresholds, based on R^2 against the held-out sample
+CONF_HIGH_R2 = 0.85
+CONF_MID_R2 = 0.70
+ 
+# --------------------------------------------------------------------------
+# LOAD DIAGNOSTICS
+# --------------------------------------------------------------------------
+def _inspect_file(path):
+    """Read the first bytes of a file to identify common deployment failures
+    (missing file, Git LFS pointer stub, empty/truncated download, etc.)."""
+    if not os.path.exists(path):
+        return f"File not found at '{path}'. Confirm it was committed/pushed to the repo."
+ 
+    size = os.path.getsize(path)
+    if size == 0:
+        return f"File '{path}' exists but is 0 bytes (empty/failed download)."
+ 
+    try:
+        with open(path, "rb") as f:
+            head = f.read(200)
+    except Exception as e:
+        return f"Could not read '{path}': {e}"
+ 
+    if head.startswith(b"version https://git-lfs"):
+        return (
+            f"'{path}' is a **Git LFS pointer file**, not the real binary model "
+            f"(only {size} bytes). Streamlit Community Cloud does not fetch LFS "
+            f"objects automatically. Fix: either stop tracking this file with LFS "
+            f"(remove it from `.gitattributes`, `git lfs untrack`, then re-commit "
+            f"the real binary), or add a build step that runs `git lfs pull`."
+        )
+ 
+    if size < 500:
+        return (
+            f"'{path}' is only {size} bytes — far smaller than a real XGBoost "
+            f"model artifact. It is likely a corrupted or placeholder file."
+        )
+ 
+    return None
+ 
+ 
+def _diagnose_load_failure(exc: Exception) -> str:
+    """Translate a raised exception + file inspection into an actionable message."""
+    msg = str(exc)
+    lines = []
+ 
+    model_issue = _inspect_file(MODEL_PATH)
+    feat_issue = _inspect_file(FEATURES_PATH)
+    sample_issue = _inspect_file(TEST_SAMPLE_PATH)
+ 
+    if model_issue:
+        lines.append(f"• <b>{MODEL_PATH}</b>: {model_issue}")
+    if feat_issue:
+        lines.append(f"• <b>{FEATURES_PATH}</b>: {feat_issue}")
+    if sample_issue:
+        lines.append(f"• <b>{TEST_SAMPLE_PATH}</b>: {sample_issue}")
+ 
+    if "isalpha(header" in msg or "Invalid serialization file" in msg:
+        lines.append(
+            "• The underlying error <b>\"Check failed: std::isalpha(header[1])\"</b> "
+            "is XGBoost refusing to read the file's header — this happens when the "
+            "bytes on disk aren't a real XGBoost binary (LFS pointer / corrupted "
+            "download, see above) <u>or</u> the model was pickled with an older/"
+            "newer XGBoost major version than the one installed here "
+            f"(installed: xgboost 3.3.0 per the deploy log). "
+            "Old pickle-based boosters from XGBoost 1.x are not guaranteed to load "
+            "on 3.x."
+        )
+        lines.append(
+            "• Recommended permanent fix: re-export the model in XGBoost's native, "
+            "version-stable format instead of joblib/pickle:<br>"
+            "&nbsp;&nbsp;<code>booster = model.get_booster()  # if using sklearn API</code><br>"
+            "&nbsp;&nbsp;<code>booster.save_model('xgboost_rul_model.json')</code><br>"
+            "then load it with <code>xgb.Booster(); booster.load_model(path)</code>, "
+            "or pin <code>xgboost==&lt;training version&gt;</code> in requirements.txt "
+            "as a short-term workaround."
+        )
+ 
+    if not lines:
+        lines.append(f"• Raw exception: {msg}")
+ 
+    return "<br>".join(lines)
+ 
+ 
 # --------------------------------------------------------------------------
 # CACHED LOADERS
 # --------------------------------------------------------------------------
@@ -82,12 +236,12 @@ def load_model_and_features():
     model = joblib.load(MODEL_PATH)
     feature_cols = joblib.load(FEATURES_PATH)
     return model, feature_cols
-
+ 
 @st.cache_data
 def load_test_sample():
     """Load the pre-processed sample engines used for the live demo."""
     return pd.read_csv(TEST_SAMPLE_PATH)
-
+ 
 @st.cache_data
 def get_feature_importance(_model, feature_cols):
     """Extract and sort XGBoost feature importances."""
@@ -97,7 +251,24 @@ def get_feature_importance(_model, feature_cols):
         .sort_values("importance", ascending=False)
         .reset_index(drop=True)
     )
-
+ 
+@st.cache_data
+def compute_model_confidence(_model, feature_cols, df, has_actual_rul, sample_size=2000):
+    """Compute RMSE / MAE / R^2 once, used to drive the model-confidence badge
+    shown throughout the app (per the requirement to color-code model strength)."""
+    if not has_actual_rul:
+        return None
+    eval_df = df.head(sample_size).copy()
+    X = eval_df[feature_cols]
+    preds = np.clip(_model.predict(X), 0, RUL_MAX)
+    actual = eval_df["RUL"].values
+    rmse = float(np.sqrt(np.mean((preds - actual) ** 2)))
+    mae = float(np.mean(np.abs(preds - actual)))
+    ss_res = np.sum((actual - preds) ** 2)
+    ss_tot = np.sum((actual - actual.mean()) ** 2)
+    r2 = 1 - ss_res / ss_tot if ss_tot > 0 else float("nan")
+    return {"rmse": rmse, "mae": mae, "r2": r2}
+ 
 # --------------------------------------------------------------------------
 # HELPER FUNCTIONS
 # --------------------------------------------------------------------------
@@ -109,20 +280,33 @@ def get_health_status(rul_value):
         return "WARNING", "#ffb84d", "badge-warning", "🟠"
     else:
         return "HEALTHY", "#4ade80", "badge-healthy", "🟢"
-
+ 
+def get_confidence_badge(r2):
+    """Map the model's R^2 on the held-out sample to a confidence label/color.
+    This is the 'how much should an engineer trust this model' signal,
+    kept visually distinct from the per-engine health badges above."""
+    if r2 is None or np.isnan(r2):
+        return "NOT EVALUATED", "conf-mid"
+    if r2 >= CONF_HIGH_R2:
+        return f"HIGH CONFIDENCE (R² {r2:.2f})", "conf-high"
+    elif r2 >= CONF_MID_R2:
+        return f"MODERATE CONFIDENCE (R² {r2:.2f})", "conf-mid"
+    else:
+        return f"LOW CONFIDENCE — REVIEW (R² {r2:.2f})", "conf-low"
+ 
 def make_gauge(rul_value, max_value=RUL_MAX):
     """Build a professional gauge chart for the predicted RUL."""
     _, color, _, _ = get_health_status(rul_value)
-
+ 
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=rul_value,
-        number={"suffix": " cycles", "font": {"size": 40, "color": "#f2f4f8"}},
+        number={"suffix": " cycles", "font": {"size": 40, "color": "#f2f4f8", "family": "JetBrains Mono"}},
         domain={"x": [0, 1], "y": [0, 1]},
         gauge={
             "axis": {"range": [0, max_value], "tickcolor": "#8b93a7", "tickfont": {"color": "#8b93a7"}},
             "bar": {"color": color, "thickness": 0.28},
-            "bgcolor": "#12151d",
+            "bgcolor": "#0d1c30",
             "borderwidth": 0,
             "steps": [
                 {"range": [0, CRITICAL_THRESHOLD], "color": "#3d1418"},
@@ -144,21 +328,31 @@ def make_gauge(rul_value, max_value=RUL_MAX):
         margin=dict(l=30, r=30, t=30, b=10),
     )
     return fig
-
+ 
 def predict_rul(model, feature_cols, row_df):
     """Run a single-row (or batch) prediction, aligning columns to the training feature order."""
     X = row_df[feature_cols]
     preds = model.predict(X)
     return np.clip(preds, 0, RUL_MAX)
-
-def kpi_card(label, value):
+ 
+def kpi_card(label, value, sub=None):
+    sub_html = f'<div class="kpi-sub">{sub}</div>' if sub else ""
     st.markdown(f"""
     <div class="kpi-card">
         <div class="kpi-label">{label}</div>
         <div class="kpi-value">{value}</div>
+        {sub_html}
     </div>
     """, unsafe_allow_html=True)
-
+ 
+def app_header(title, subtitle):
+    st.markdown(f"""
+    <div class="app-header">
+        <h1>{title}</h1>
+        <p>{subtitle}</p>
+    </div>
+    """, unsafe_allow_html=True)
+ 
 # --------------------------------------------------------------------------
 # LOAD ARTIFACTS
 # --------------------------------------------------------------------------
@@ -168,29 +362,30 @@ try:
     load_error = None
 except Exception as e:
     model, feature_cols, test_df = None, None, None
-    load_error = str(e)
-
+    load_error = _diagnose_load_failure(e)
+ 
 # --------------------------------------------------------------------------
 # SIDEBAR
 # --------------------------------------------------------------------------
 with st.sidebar:
-    st.markdown("## ✈️ Predictive Maintenance")
-    st.markdown("**NASA C-MAPSS — Turbofan Engine RUL**")
+    st.markdown("## 🛩️ AeroRUL")
+    st.markdown("**Turbofan Engine Prognostics & Health Management**")
+    st.caption("NASA C-MAPSS · XGBoost Regression")
     st.markdown("---")
-
+ 
     page = st.radio(
         "Navigate",
         [
-            "🏠 Overview",
+            "🏠 Fleet Overview",
             "🔧 Engine Diagnostics",
-            "🧪 What-If Simulator",
+            "🧪 Sensitivity Simulator",
             "📊 Batch Prediction",
-            "📈 Model Insights",
+            "📈 Model Insights & Validation",
         ],
     )
-
+ 
     st.markdown("---")
-    st.markdown("### About the Model")
+    st.markdown("### Model Specification")
     st.markdown(
         """
         - **Algorithm:** XGBoost Regressor
@@ -199,56 +394,72 @@ with st.sidebar:
         - **RUL cap:** 125 cycles (piecewise-linear degradation)
         """
     )
+ 
+    if not load_error and 'has_actual_rul' not in dir():
+        pass  # placeholder, real confidence badge rendered below after data checks
+ 
+    st.markdown("---")
     st.caption("Built as part of a Machine Learning graduation project.")
-
+ 
 if load_error:
-    st.error(
-        f"⚠️ Could not load model artifacts. Make sure `xgboost_rul_model.pkl`, "
-        f"`model_features.pkl`, and `merged_nasa_cmapss.zip` are in the app directory.\n\n"
-        f"Details: {load_error}"
-    )
+    st.markdown(f"""
+    <div class="diag-box">
+    <b>⚠️ Model artifacts failed to load.</b><br><br>
+    {load_error}
+    </div>
+    """, unsafe_allow_html=True)
     st.stop()
-
+ 
 has_unit_id = "unit_id" in test_df.columns
 has_cycle = "cycle" in test_df.columns
 has_actual_rul = "RUL" in test_df.columns
-
+ 
+confidence = compute_model_confidence(model, feature_cols, test_df, has_actual_rul)
+conf_label, conf_class = get_confidence_badge(confidence["r2"] if confidence else None)
+ 
+# Persistent model-confidence badge in the sidebar (visible on every page)
+with st.sidebar:
+    st.markdown("### Model Confidence")
+    st.markdown(f'<span class="conf-badge {conf_class}">{conf_label}</span>', unsafe_allow_html=True)
+    if confidence:
+        st.caption(f"RMSE {confidence['rmse']:.1f} cycles · MAE {confidence['mae']:.1f} cycles")
+ 
 # ==========================================================================
-# PAGE: OVERVIEW
+# PAGE: FLEET OVERVIEW
 # ==========================================================================
-if page == "🏠 Overview":
-    st.title("Turbofan Engine — Remaining Useful Life Prediction")
-    st.markdown(
-        "A predictive maintenance system estimating how many operating cycles remain "
-        "before an engine requires maintenance, trained on NASA's C-MAPSS dataset "
-        "(FD001–FD004, six operating conditions, XGBoost regression)."
+if page == "🏠 Fleet Overview":
+    app_header(
+        "Turbofan Fleet — Remaining Useful Life Overview",
+        "Estimated operating cycles remaining before maintenance is required, "
+        "trained on NASA's C-MAPSS dataset (FD001–FD004, six operating conditions)."
     )
-
-    st.markdown("###")
-    c1, c2, c3, c4 = st.columns(4)
+ 
+    c1, c2, c3, c4, c5 = st.columns(5)
     with c1:
-        kpi_card("Model", "XGBoost")
+        kpi_card("Algorithm", "XGBoost", "Gradient-boosted trees")
     with c2:
-        kpi_card("Features", f"{len(feature_cols)}")
+        kpi_card("Input Features", f"{len(feature_cols)}", "sensor + rolling stats")
     with c3:
         n_engines = test_df["unit_id"].nunique() if has_unit_id else len(test_df)
         kpi_card("Engines in Sample", f"{n_engines}")
     with c4:
-        kpi_card("RUL Cap", f"{RUL_MAX} cycles")
-
+        kpi_card("RUL Cap", f"{RUL_MAX}", "cycles (piecewise-linear)")
+    with c5:
+        kpi_card("Model Confidence", conf_label.split(" (")[0], conf_label[conf_label.find("("):] if "(" in conf_label else "")
+ 
     st.markdown("###")
-    st.subheader("Sample Engine Fleet — Predicted Health")
-
-    preview = test_df.head(1000).copy() # Load a subset to keep the dashboard extremely fast
+    st.subheader("Fleet Health — Predicted RUL by Engine")
+ 
+    preview = test_df.head(1000).copy()  # subset kept for responsiveness
     preview["Predicted_RUL"] = predict_rul(model, feature_cols, preview).round(1)
     preview["Status"] = preview["Predicted_RUL"].apply(lambda v: get_health_status(v)[0])
-
+ 
     if has_unit_id:
         fleet = preview.groupby("unit_id", as_index=False)["Predicted_RUL"].min()
         fleet["Status"] = fleet["Predicted_RUL"].apply(lambda v: get_health_status(v)[0])
     else:
         fleet = preview[["Predicted_RUL", "Status"]].reset_index().rename(columns={"index": "unit_id"})
-
+ 
     color_map = {"CRITICAL": "#ff6b6b", "WARNING": "#ffb84d", "HEALTHY": "#4ade80"}
     fig = px.bar(
         fleet.sort_values("Predicted_RUL"),
@@ -260,26 +471,26 @@ if page == "🏠 Overview":
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         font={"color": "#f2f4f8"}, height=420,
         xaxis={"showticklabels": False},
+        legend_title_text="",
     )
     st.plotly_chart(fig, use_container_width=True)
-
+ 
     n_crit = (fleet["Status"] == "CRITICAL").sum()
     n_warn = (fleet["Status"] == "WARNING").sum()
     n_healthy = (fleet["Status"] == "HEALTHY").sum()
     st.info(
-        f"🔴 **{n_crit}** critical  |  🟠 **{n_warn}** need monitoring  |  "
+        f"🔴 **{n_crit}** require immediate maintenance  |  🟠 **{n_warn}** need monitoring  |  "
         f"🟢 **{n_healthy}** healthy — out of **{len(fleet)}** engines in this sample."
     )
-
+ 
 # ==========================================================================
 # PAGE: ENGINE DIAGNOSTICS
 # ==========================================================================
 elif page == "🔧 Engine Diagnostics":
-    st.title("🔧 Single Engine Diagnostics")
-    st.markdown("Select an engine from the test sample to inspect its predicted health.")
-
+    app_header("Single Engine Diagnostics", "Inspect predicted health for one engine from the fleet sample.")
+ 
     if has_unit_id:
-        selected_unit = st.selectbox("Select Engine (unit_id)", sorted(test_df["unit_id"].unique()[:200])) # Show top 200 for speed
+        selected_unit = st.selectbox("Select Engine (unit_id)", sorted(test_df["unit_id"].unique()[:200]))
         unit_rows = test_df[test_df["unit_id"] == selected_unit].copy()
         if has_cycle:
             unit_rows = unit_rows.sort_values("cycle")
@@ -288,15 +499,15 @@ elif page == "🔧 Engine Diagnostics":
         idx = st.selectbox("Select Row Index", test_df.head(200).index)
         unit_rows = test_df.loc[[idx]]
         current_row = unit_rows
-
+ 
     predicted_rul = float(predict_rul(model, feature_cols, current_row)[0])
     status_label, status_color, badge_class, icon = get_health_status(predicted_rul)
-
+ 
     col_gauge, col_info = st.columns([1.2, 1])
-
+ 
     with col_gauge:
         st.plotly_chart(make_gauge(predicted_rul), use_container_width=True)
-
+ 
     with col_info:
         st.markdown(f"""
         <div class="kpi-card" style="margin-bottom:1rem;">
@@ -304,26 +515,27 @@ elif page == "🔧 Engine Diagnostics":
             <div class="kpi-value">{predicted_rul:.1f} cycles</div>
         </div>
         """, unsafe_allow_html=True)
-
+ 
         st.markdown(
-            f'<span class="status-badge {badge_class}">{icon} {status_label}</span>',
+            f'<span class="status-badge {badge_class}">{icon} {status_label}</span>'
+            f'&nbsp;&nbsp;<span class="conf-badge {conf_class}">{conf_label}</span>',
             unsafe_allow_html=True,
         )
-
+        st.markdown("###")
+ 
         if status_label == "CRITICAL":
             st.error("⚠️ Immediate maintenance recommended. Engine is close to end-of-life.")
         elif status_label == "WARNING":
             st.warning("🟠 Schedule maintenance soon. Degradation trend detected.")
         else:
             st.success("✅ Engine operating within normal parameters.")
-
+ 
         if has_actual_rul:
             actual_rul = float(current_row["RUL"].values[0])
             error = predicted_rul - actual_rul
             st.metric("Actual RUL (ground truth)", f"{actual_rul:.1f} cycles",
                        delta=f"{error:+.1f} prediction error")
-
-    # Sensor trend over the engine's observed cycles
+ 
     if has_cycle and len(unit_rows) > 1:
         st.markdown("---")
         st.subheader("Sensor Trend Over Observed Cycles")
@@ -340,28 +552,24 @@ elif page == "🔧 Engine Diagnostics":
                     font={"color": "#f2f4f8"}, height=380,
                 )
                 st.plotly_chart(trend_fig, use_container_width=True)
-
+ 
     with st.expander("View raw feature values used for this prediction"):
         st.dataframe(current_row[feature_cols].T.rename(columns={current_row.index[0]: "value"}))
-
+ 
 # ==========================================================================
-# PAGE: WHAT-IF SIMULATOR
+# PAGE: SENSITIVITY SIMULATOR
 # ==========================================================================
-elif page == "🧪 What-If Simulator":
-    st.title("🧪 What-If Sensor Simulator")
-    st.markdown(
-        "Adjust the most influential sensor readings and watch the predicted RUL update live. "
-        "All other features are held at the dataset median."
-    )
-
+elif page == "🧪 Sensitivity Simulator":
+    app_header("What-If Sensor Simulator", "Adjust the most influential sensor readings and watch the predicted RUL update live. All other features are held at the dataset median.")
+ 
     importance_df = get_feature_importance(model, feature_cols)
     top_features = importance_df.head(8)["feature"].tolist()
-
+ 
     baseline = test_df[feature_cols].median(numeric_only=True)
-
+ 
     st.markdown("### Adjustable Parameters (Top Influential Features)")
     sim_values = baseline.copy()
-
+ 
     cols = st.columns(2)
     for i, feat in enumerate(top_features):
         col = cols[i % 2]
@@ -373,11 +581,11 @@ elif page == "🧪 What-If Simulator":
                 feat, min_value=f_min, max_value=f_max, value=f_default,
                 key=f"sim_{feat}",
             )
-
+ 
     sim_row = pd.DataFrame([sim_values])[feature_cols]
     sim_pred = float(predict_rul(model, feature_cols, sim_row)[0])
     status_label, status_color, badge_class, icon = get_health_status(sim_pred)
-
+ 
     st.markdown("---")
     c1, c2 = st.columns([1, 1.3])
     with c1:
@@ -397,29 +605,26 @@ elif page == "🧪 What-If Simulator":
             "This simulator demonstrates the model's sensitivity to its most important "
             "features, as ranked by XGBoost's built-in feature importance."
         )
-
+ 
 # ==========================================================================
 # PAGE: BATCH PREDICTION
 # ==========================================================================
 elif page == "📊 Batch Prediction":
-    st.title("📊 Batch Prediction")
-    st.markdown(
-        "Upload a CSV containing the required feature columns to score multiple engines at once."
-    )
-
+    app_header("Batch Prediction", "Upload a CSV containing the required feature columns to score multiple engines at once.")
+ 
     with st.expander("Required columns"):
         st.code(", ".join(feature_cols))
-
+ 
     uploaded_file = st.file_uploader("Upload CSV file", type=["csv"])
-
+ 
     use_demo = st.checkbox("Use the built-in test sample instead", value=not bool(uploaded_file))
-
+ 
     batch_df = None
     if uploaded_file is not None and not use_demo:
         batch_df = pd.read_csv(uploaded_file)
     elif use_demo:
         batch_df = test_df.head(1000).copy()
-
+ 
     if batch_df is not None:
         missing_cols = [c for c in feature_cols if c not in batch_df.columns]
         if missing_cols:
@@ -427,25 +632,24 @@ elif page == "📊 Batch Prediction":
         else:
             batch_df["Predicted_RUL"] = predict_rul(model, feature_cols, batch_df).round(2)
             batch_df["Status"] = batch_df["Predicted_RUL"].apply(lambda v: get_health_status(v)[0])
-
+ 
             st.success(f"✅ Scored {len(batch_df)} rows successfully.")
-
+ 
             id_cols = [c for c in ["unit_id", "cycle"] if c in batch_df.columns]
             display_cols = id_cols + ["Predicted_RUL", "Status"]
-            
-            # Using Pandas Styler for coloring status column
+ 
             def color_status(val):
                 if val == 'CRITICAL': return 'color: #ff6b6b'
                 elif val == 'WARNING': return 'color: #ffb84d'
                 elif val == 'HEALTHY': return 'color: #4ade80'
                 return ''
-            
+ 
             st.dataframe(
                 batch_df[display_cols].style.map(color_status, subset=['Status']),
                 use_container_width=True,
                 height=420,
             )
-
+ 
             csv_out = batch_df.to_csv(index=False).encode("utf-8")
             st.download_button(
                 "⬇️ Download Predictions as CSV",
@@ -453,28 +657,31 @@ elif page == "📊 Batch Prediction":
                 file_name="rul_predictions.csv",
                 mime="text/csv",
             )
-
+ 
 # ==========================================================================
-# PAGE: MODEL INSIGHTS
+# PAGE: MODEL INSIGHTS & VALIDATION
 # ==========================================================================
-elif page == "📈 Model Insights":
-    st.title("📈 Model Insights & Explainability")
-
+elif page == "📈 Model Insights & Validation":
+    app_header("Model Insights & Validation", "Explainability and performance evidence supporting the model-confidence rating shown throughout the app.")
+ 
+    st.markdown(f'<span class="conf-badge {conf_class}" style="font-size:0.95rem;">{conf_label}</span>', unsafe_allow_html=True)
+    st.markdown("###")
+ 
     importance_df = get_feature_importance(model, feature_cols)
-
+ 
     st.subheader("Top 15 Feature Importances (XGBoost)")
     top15 = importance_df.head(15)
     fig = px.bar(
         top15.sort_values("importance"),
         x="importance", y="feature", orientation="h",
-        color="importance", color_continuous_scale="Blues",
+        color="importance", color_continuous_scale="Teal",
     )
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         font={"color": "#f2f4f8"}, height=520, coloraxis_showscale=False,
     )
     st.plotly_chart(fig, use_container_width=True)
-
+ 
     st.markdown(
         """
         **Why this matters:** operating condition context (`op_setting_1/2/3`) combined with raw
@@ -482,26 +689,23 @@ elif page == "📈 Model Insights":
         patterns without explicit regime clustering — the core scientific argument of this project.
         """
     )
-
-    if has_actual_rul:
+ 
+    if has_actual_rul and confidence:
         st.markdown("---")
         st.subheader("Model Performance on Test Sample")
-        
-        eval_df = test_df.head(2000).copy() # Evaluate on a sample subset for performance
-        preds = predict_rul(model, feature_cols, eval_df)
-        actual = eval_df["RUL"].values
-        rmse = float(np.sqrt(np.mean((preds - actual) ** 2)))
-        mae = float(np.mean(np.abs(preds - actual)))
-        r2 = 1 - np.sum((actual - preds) ** 2) / np.sum((actual - actual.mean()) ** 2)
-
+ 
         m1, m2, m3 = st.columns(3)
         with m1:
-            kpi_card("RMSE", f"{rmse:.2f} cycles")
+            kpi_card("RMSE", f"{confidence['rmse']:.2f} cycles")
         with m2:
-            kpi_card("MAE", f"{mae:.2f} cycles")
+            kpi_card("MAE", f"{confidence['mae']:.2f} cycles")
         with m3:
-            kpi_card("R² Score", f"{r2:.3f}")
-
+            kpi_card("R² Score", f"{confidence['r2']:.3f}")
+ 
+        eval_df = test_df.head(2000).copy()
+        preds = predict_rul(model, feature_cols, eval_df)
+        actual = eval_df["RUL"].values
+ 
         scatter_fig = px.scatter(
             x=actual, y=preds, opacity=0.4,
             labels={"x": "Actual RUL", "y": "Predicted RUL"},
@@ -515,7 +719,7 @@ elif page == "📈 Model Insights":
             font={"color": "#f2f4f8"}, height=420,
         )
         st.plotly_chart(scatter_fig, use_container_width=True)
-
+ 
 # --------------------------------------------------------------------------
 # FOOTER
 # --------------------------------------------------------------------------
@@ -524,3 +728,4 @@ st.caption(
     "NASA C-MAPSS Remaining Useful Life Prediction — Machine Learning Graduation Project | "
     "Model: XGBoost Regressor | Deployment: Streamlit"
 )
+ 
