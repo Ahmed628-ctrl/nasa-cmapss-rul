@@ -5,7 +5,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 import streamlit as st
-from xgboost import XGBRegressor  # تمت إضافة مكتبة إكس جي بوست هنا
+from xgboost import XGBRegressor
 
 # --------------------------------------------------------------------------
 # PAGE CONFIGURATION
@@ -130,6 +130,17 @@ st.markdown("""
         line-height: 1.55;
     }
     .diag-box b { color: #ff8080; }
+
+    /* ---- Methodology / info panel ---- */
+    .info-box {
+        background: linear-gradient(150deg, #0d1c30, #081221);
+        border: 1px solid #16324f;
+        border-radius: 12px;
+        padding: 1rem 1.2rem;
+        font-size: 0.88rem;
+        color: #c7d7ec;
+        line-height: 1.65;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -140,7 +151,7 @@ RUL_MAX = 125          # matches the piecewise-linear clipping used in training
 CRITICAL_THRESHOLD = 30
 WARNING_THRESHOLD = 70
 
-MODEL_PATH = "xgboost_rul_model.json"  # تم تعديل الامتداد إلى json
+MODEL_PATH = "xgboost_rul_model.json"
 FEATURES_PATH = "model_features.pkl"
 TEST_SAMPLE_PATH = "processed_test_sample.csv"
 
@@ -176,7 +187,6 @@ def _inspect_file(path):
             f"the real binary), or add a build step that runs `git lfs pull`."
         )
 
-    # تم التعديل لكي لا يعطي إنذار كاذب لملف الأعمدة الصغير
     if path == MODEL_PATH and size < 500:
         return (
             f"'{path}' is only {size} bytes — far smaller than a real XGBoost "
@@ -202,7 +212,7 @@ def _diagnose_load_failure(exc: Exception) -> str:
         lines.append(f"• <b>{TEST_SAMPLE_PATH}</b>: {sample_issue}")
 
     if not lines:
-        lines.append(f"• Raw exception: {msg}")
+        lines.append(f"• {msg}")
 
     return "<br>".join(lines)
 
@@ -212,10 +222,9 @@ def _diagnose_load_failure(exc: Exception) -> str:
 @st.cache_resource
 def load_model_and_features():
     """Load the trained XGBoost model natively and the exact feature list."""
-    # تم تعديل طريقة التحميل لتقرأ ملف الـ JSON بنجاح
     model = XGBRegressor()
     model.load_model(MODEL_PATH)
-    
+
     feature_cols = joblib.load(FEATURES_PATH)
     return model, feature_cols
 
@@ -338,6 +347,22 @@ def app_header(title, subtitle):
 try:
     model, feature_cols = load_model_and_features()
     test_df = load_test_sample()
+
+    # Guard against the model/feature-list and the sample CSV coming from two
+    # different notebook runs (e.g. correlation-based feature selection can
+    # produce a slightly different feature set between runs). Fail loudly and
+    # specifically instead of crashing deep inside a prediction call.
+    missing_features = [c for c in feature_cols if c not in test_df.columns]
+    if missing_features:
+        raise ValueError(
+            f"'{TEST_SAMPLE_PATH}' is missing {len(missing_features)} feature column(s) "
+            f"that the model expects: {missing_features}. This happens when the CSV and "
+            f"the model/feature-list ('{MODEL_PATH}', '{FEATURES_PATH}') were exported "
+            f"from different runs of the notebook. Re-run the notebook top to bottom once, "
+            f"then save all three artifacts at the very end of that same run before "
+            f"re-uploading them together."
+        )
+
     load_error = None
 except Exception as e:
     model, feature_cols, test_df = None, None, None
@@ -371,13 +396,32 @@ with st.sidebar:
         - **Target:** Remaining Useful Life (RUL)
         - **Training data:** Merged FD001–FD004
         - **RUL cap:** 125 cycles (piecewise-linear degradation)
+        - **Selected over:** Linear Regression, Decision Tree, Random Forest
         """
     )
 
-    if not load_error and 'has_actual_rul' not in dir():
-        pass  # placeholder, real confidence badge rendered below after data checks
+    with st.expander("ℹ️ Methodology"):
+        st.markdown(
+            """
+            <div class="info-box">
+            Sensor streams from all four C-MAPSS sub-datasets were merged into a single
+            fleet, tagged with a unique engine identity, then enriched with rolling
+            mean/std features per sensor to capture degradation trends. Near-constant
+            sensors and highly correlated features (&gt; 0.95) were pruned before
+            training. Four regressors were compared on a held-out, engine-level split
+            (Linear Regression, Decision Tree, Random Forest, XGBoost); XGBoost was
+            selected for deployment based on test-set accuracy.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     st.markdown("---")
+    if st.button("🔄 Reload data & clear cache"):
+        st.cache_resource.clear()
+        st.cache_data.clear()
+        st.rerun()
+
     st.caption("Built as part of a Machine Learning graduation project.")
 
 if load_error:
@@ -440,19 +484,36 @@ if page == "🏠 Fleet Overview":
         fleet = preview[["Predicted_RUL", "Status"]].reset_index().rename(columns={"index": "unit_id"})
 
     color_map = {"CRITICAL": "#ff6b6b", "WARNING": "#ffb84d", "HEALTHY": "#4ade80"}
-    fig = px.bar(
-        fleet.sort_values("Predicted_RUL"),
-        x="unit_id", y="Predicted_RUL", color="Status",
-        color_discrete_map=color_map,
-        labels={"unit_id": "Engine", "Predicted_RUL": "Predicted RUL (cycles)"},
-    )
-    fig.update_layout(
-        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        font={"color": "#f2f4f8"}, height=420,
-        xaxis={"showticklabels": False},
-        legend_title_text="",
-    )
-    st.plotly_chart(fig, use_container_width=True)
+
+    col_bar, col_hist = st.columns([1.6, 1])
+    with col_bar:
+        fig = px.bar(
+            fleet.sort_values("Predicted_RUL"),
+            x="unit_id", y="Predicted_RUL", color="Status",
+            color_discrete_map=color_map,
+            labels={"unit_id": "Engine", "Predicted_RUL": "Predicted RUL (cycles)"},
+        )
+        fig.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            font={"color": "#f2f4f8"}, height=420,
+            xaxis={"showticklabels": False},
+            legend_title_text="",
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    with col_hist:
+        hist_fig = px.histogram(
+            fleet, x="Predicted_RUL", color="Status", nbins=25,
+            color_discrete_map=color_map,
+            labels={"Predicted_RUL": "Predicted RUL (cycles)"},
+        )
+        hist_fig.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            font={"color": "#f2f4f8"}, height=420,
+            legend_title_text="", showlegend=False,
+            title="Distribution of Predicted RUL",
+        )
+        st.plotly_chart(hist_fig, use_container_width=True)
 
     n_crit = (fleet["Status"] == "CRITICAL").sum()
     n_warn = (fleet["Status"] == "WARNING").sum()
@@ -460,6 +521,14 @@ if page == "🏠 Fleet Overview":
     st.info(
         f"🔴 **{n_crit}** require immediate maintenance  |  🟠 **{n_warn}** need monitoring  |  "
         f"🟢 **{n_healthy}** healthy — out of **{len(fleet)}** engines in this sample."
+    )
+
+    csv_out = fleet.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        "⬇️ Download Fleet Health Report (CSV)",
+        data=csv_out,
+        file_name="fleet_health_report.csv",
+        mime="text/csv",
     )
 
 # ==========================================================================
@@ -584,6 +653,10 @@ elif page == "🧪 Sensitivity Simulator":
             "This simulator demonstrates the model's sensitivity to its most important "
             "features, as ranked by XGBoost's built-in feature importance."
         )
+        if st.button("↺ Reset to dataset median"):
+            for feat in top_features:
+                st.session_state.pop(f"sim_{feat}", None)
+            st.rerun()
 
 # ==========================================================================
 # PAGE: BATCH PREDICTION
@@ -613,6 +686,14 @@ elif page == "📊 Batch Prediction":
             batch_df["Status"] = batch_df["Predicted_RUL"].apply(lambda v: get_health_status(v)[0])
 
             st.success(f"✅ Scored {len(batch_df)} rows successfully.")
+
+            m1, m2, m3 = st.columns(3)
+            with m1:
+                kpi_card("Rows Scored", f"{len(batch_df)}")
+            with m2:
+                kpi_card("Avg Predicted RUL", f"{batch_df['Predicted_RUL'].mean():.1f}", "cycles")
+            with m3:
+                kpi_card("Critical Engines", f"{(batch_df['Status'] == 'CRITICAL').sum()}")
 
             id_cols = [c for c in ["unit_id", "cycle"] if c in batch_df.columns]
             display_cols = id_cols + ["Predicted_RUL", "Status"]
@@ -684,20 +765,40 @@ elif page == "📈 Model Insights & Validation":
         eval_df = test_df.head(2000).copy()
         preds = predict_rul(model, feature_cols, eval_df)
         actual = eval_df["RUL"].values
+        residuals = actual - preds
 
-        scatter_fig = px.scatter(
-            x=actual, y=preds, opacity=0.4,
-            labels={"x": "Actual RUL", "y": "Predicted RUL"},
-        )
-        scatter_fig.add_shape(
-            type="line", x0=0, y0=0, x1=RUL_MAX, y1=RUL_MAX,
-            line=dict(color="white", dash="dash"),
-        )
-        scatter_fig.update_layout(
-            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-            font={"color": "#f2f4f8"}, height=420,
-        )
-        st.plotly_chart(scatter_fig, use_container_width=True)
+        col_scatter, col_resid = st.columns(2)
+
+        with col_scatter:
+            scatter_fig = px.scatter(
+                x=actual, y=preds, opacity=0.4,
+                labels={"x": "Actual RUL", "y": "Predicted RUL"},
+                title="Predicted vs Actual RUL",
+            )
+            scatter_fig.add_shape(
+                type="line", x0=0, y0=0, x1=RUL_MAX, y1=RUL_MAX,
+                line=dict(color="white", dash="dash"),
+            )
+            scatter_fig.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                font={"color": "#f2f4f8"}, height=420,
+            )
+            st.plotly_chart(scatter_fig, use_container_width=True)
+
+        with col_resid:
+            resid_fig = px.histogram(
+                x=residuals, nbins=40,
+                labels={"x": "Residual (Actual − Predicted)"},
+                title="Residual Distribution",
+            )
+            resid_fig.add_vline(x=0, line_dash="dash", line_color="white")
+            resid_fig.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                font={"color": "#f2f4f8"}, height=420,
+            )
+            st.plotly_chart(resid_fig, use_container_width=True)
+    else:
+        st.info("Ground-truth RUL is not available in this sample, so performance metrics and residual plots are not shown.")
 
 # --------------------------------------------------------------------------
 # FOOTER
