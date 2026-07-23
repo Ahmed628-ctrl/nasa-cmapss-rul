@@ -1,4 +1,4 @@
-# 🛩️ AeroRUL — Turbofan Engine Remaining Useful Life Prediction
+#  AeroRUL — Turbofan Engine Remaining Useful Life Prediction
 
 **AeroRUL** is an end-to-end machine learning project that predicts the **Remaining Useful Life (RUL)** of turbofan jet engines from multivariate sensor data, and serves the trained model through an interactive **Streamlit** dashboard for fleet health monitoring and predictive maintenance.
 
@@ -6,7 +6,7 @@
 
 ---
 
-## 📌 Overview
+##  Overview
 
 Aircraft engines degrade gradually over their operating life. Being able to estimate how many operating cycles an engine has left — before it needs maintenance — is a classic **predictive maintenance** problem. This project:
 
@@ -17,7 +17,7 @@ Aircraft engines degrade gradually over their operating life. Being able to esti
 
 ---
 
-## 🗂️ Dataset
+##  Dataset
 
 - **Source:** [NASA C-MAPSS Turbofan Engine Degradation Simulation Dataset](https://www.kaggle.com/datasets/behrad3d/nasa-cmaps) (also available directly from NASA's Prognostics Data Repository)
 - **Subsets used:** FD001, FD002, FD003, FD004 — covering different combinations of operating conditions and fault modes
@@ -26,7 +26,7 @@ Aircraft engines degrade gradually over their operating life. Being able to esti
 
 ---
 
-## 🔬 Methodology
+##  Methodology
 
 | Stage | What was done |
 |---|---|
@@ -50,21 +50,21 @@ Aircraft engines degrade gradually over their operating life. Being able to esti
 
 ---
 
-## 🖥️ The App
+##  The App
 
 The Streamlit app (`app.py`) is organized into 5 pages:
 
-- **🏠 Fleet Overview** — KPIs, fleet-wide predicted RUL bar chart and distribution, health status breakdown (Healthy / Warning / Critical), downloadable fleet health report
-- **🔧 Engine Diagnostics** — Deep dive into a single engine: RUL gauge, health status, sensor trend charts, raw feature values
-- **🧪 Sensitivity Simulator** — Interactive sliders on the model's most influential features to explore "what-if" scenarios and see the predicted RUL update live
-- **📊 Batch Prediction** — Upload a CSV to score many engines at once, with a downloadable results file
-- **📈 Model Insights & Validation** — Feature importance, predicted-vs-actual scatter plot, and residual distribution
+- ** Fleet Overview** — KPIs, fleet-wide predicted RUL bar chart and distribution, health status breakdown (Healthy / Warning / Critical), downloadable fleet health report
+- ** Engine Diagnostics** — Deep dive into a single engine: RUL gauge, health status, sensor trend charts, raw feature values
+- ** Sensitivity Simulator** — Interactive sliders on the model's most influential features to explore "what-if" scenarios and see the predicted RUL update live
+- ** Batch Prediction** — Upload a CSV to score many engines at once, with a downloadable results file
+- ** Model Insights & Validation** — Feature importance, predicted-vs-actual scatter plot, and residual distribution
 
 The app also includes built-in diagnostics that detect common deployment issues (missing files, Git LFS pointer stubs, mismatched feature lists between the model and the sample data) and surface a clear, actionable message instead of crashing silently.
 
 ---
 
-## 🧰 Tech Stack
+##  Tech Stack
 
 - **Data processing & modeling:** Python, Pandas, NumPy, Scikit-learn, XGBoost
 - **Visualization (notebook):** Matplotlib, Seaborn
@@ -74,7 +74,7 @@ The app also includes built-in diagnostics that detect common deployment issues 
 
 ---
 
-## 📁 Project Structure
+##  Project Structure
 
 ```
 .
@@ -88,7 +88,7 @@ The app also includes built-in diagnostics that detect common deployment issues 
 
 ---
 
-## 🚀 Running Locally
+##  Running Locally
 
 ```bash
 # 1. Clone the repository
@@ -106,14 +106,14 @@ The app expects `xgboost_rul_model.json`, `model_features.pkl`, and `processed_t
 
 ---
 
-## ☁️ Deployment Notes
+##  Deployment Notes
 
 - Deployed on **Streamlit Community Cloud**.
-- ⚠️ `xgboost_rul_model.json`, `model_features.pkl`, and `processed_test_sample.csv` must always be regenerated **together, in a single top-to-bottom run of the notebook**, then committed together. Because the feature-selection step is data-driven (correlation-based pruning), regenerating them separately can produce a mismatched feature list between the model and the sample data.
+-  `xgboost_rul_model.json`, `model_features.pkl`, and `processed_test_sample.csv` must always be regenerated **together, in a single top-to-bottom run of the notebook**, then committed together. Because the feature-selection step is data-driven (correlation-based pruning), regenerating them separately can produce a mismatched feature list between the model and the sample data.
 - If large files are tracked with Git LFS, make sure the deployment platform actually pulls the LFS objects — otherwise only pointer stub files get deployed.
 
 ---
 
-## 🎓 About
+##  About
 
 This project was built as a machine learning portfolio / graduation project, demonstrating a complete workflow from raw multivariate sensor data to a deployed, interactive predictive-maintenance tool.
