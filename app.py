@@ -20,7 +20,8 @@ st.set_page_config(
 # --------------------------------------------------------------------------
 # CUSTOM CSS — aerospace / avionics-inspired professional theme
 # --------------------------------------------------------------------------
-st.markdown("""
+st.markdown(
+    """
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
@@ -142,12 +143,14 @@ st.markdown("""
         line-height: 1.65;
     }
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 # --------------------------------------------------------------------------
 # CONSTANTS
 # --------------------------------------------------------------------------
-RUL_MAX = 125          # matches the piecewise-linear clipping used in training
+RUL_MAX = 125  # matches the piecewise-linear clipping used in training
 CRITICAL_THRESHOLD = 30
 WARNING_THRESHOLD = 70
 
@@ -158,6 +161,7 @@ TEST_SAMPLE_PATH = "processed_test_sample.csv"
 # Model-confidence thresholds, based on R^2 against the held-out sample
 CONF_HIGH_R2 = 0.85
 CONF_MID_R2 = 0.70
+
 
 # --------------------------------------------------------------------------
 # LOAD DIAGNOSTICS
@@ -195,6 +199,7 @@ def _inspect_file(path):
 
     return None
 
+
 def _diagnose_load_failure(exc: Exception) -> str:
     """Translate a raised exception + file inspection into an actionable message."""
     msg = str(exc)
@@ -216,6 +221,7 @@ def _diagnose_load_failure(exc: Exception) -> str:
 
     return "<br>".join(lines)
 
+
 # --------------------------------------------------------------------------
 # CACHED LOADERS
 # --------------------------------------------------------------------------
@@ -228,10 +234,12 @@ def load_model_and_features():
     feature_cols = joblib.load(FEATURES_PATH)
     return model, feature_cols
 
+
 @st.cache_data
 def load_test_sample():
     """Load the pre-processed sample engines used for the live demo."""
     return pd.read_csv(TEST_SAMPLE_PATH)
+
 
 @st.cache_data
 def get_feature_importance(_model, feature_cols):
@@ -242,6 +250,7 @@ def get_feature_importance(_model, feature_cols):
         .sort_values("importance", ascending=False)
         .reset_index(drop=True)
     )
+
 
 @st.cache_data
 def compute_model_confidence(_model, feature_cols, df, has_actual_rul, sample_size=2000):
@@ -259,6 +268,7 @@ def compute_model_confidence(_model, feature_cols, df, has_actual_rul, sample_si
     r2 = 1 - ss_res / ss_tot if ss_tot > 0 else float("nan")
     return {"rmse": rmse, "mae": mae, "r2": r2}
 
+
 # --------------------------------------------------------------------------
 # HELPER FUNCTIONS
 # --------------------------------------------------------------------------
@@ -271,6 +281,7 @@ def get_health_status(rul_value):
     else:
         return "HEALTHY", "#4ade80", "badge-healthy", "🟢"
 
+
 def get_confidence_badge(r2):
     """Map the model's R^2 on the held-out sample to a confidence label/color."""
     if r2 is None or np.isnan(r2):
@@ -282,32 +293,42 @@ def get_confidence_badge(r2):
     else:
         return f"LOW CONFIDENCE — REVIEW (R² {r2:.2f})", "conf-low"
 
+
 def make_gauge(rul_value, max_value=RUL_MAX):
     """Build a professional gauge chart for the predicted RUL."""
     _, color, _, _ = get_health_status(rul_value)
 
-    fig = go.Figure(go.Indicator(
-        mode="gauge+number",
-        value=rul_value,
-        number={"suffix": " cycles", "font": {"size": 40, "color": "#f2f4f8", "family": "JetBrains Mono"}},
-        domain={"x": [0, 1], "y": [0, 1]},
-        gauge={
-            "axis": {"range": [0, max_value], "tickcolor": "#8b93a7", "tickfont": {"color": "#8b93a7"}},
-            "bar": {"color": color, "thickness": 0.28},
-            "bgcolor": "#0d1c30",
-            "borderwidth": 0,
-            "steps": [
-                {"range": [0, CRITICAL_THRESHOLD], "color": "#3d1418"},
-                {"range": [CRITICAL_THRESHOLD, WARNING_THRESHOLD], "color": "#3d2f10"},
-                {"range": [WARNING_THRESHOLD, max_value], "color": "#10331b"},
-            ],
-            "threshold": {
-                "line": {"color": "white", "width": 3},
-                "thickness": 0.8,
-                "value": rul_value,
+    fig = go.Figure(
+        go.Indicator(
+            mode="gauge+number",
+            value=rul_value,
+            number={
+                "suffix": " cycles",
+                "font": {"size": 40, "color": "#f2f4f8", "family": "JetBrains Mono"},
             },
-        },
-    ))
+            domain={"x": [0, 1], "y": [0, 1]},
+            gauge={
+                "axis": {
+                    "range": [0, max_value],
+                    "tickcolor": "#8b93a7",
+                    "tickfont": {"color": "#8b93a7"},
+                },
+                "bar": {"color": color, "thickness": 0.28},
+                "bgcolor": "#0d1c30",
+                "borderwidth": 0,
+                "steps": [
+                    {"range": [0, CRITICAL_THRESHOLD], "color": "#3d1418"},
+                    {"range": [CRITICAL_THRESHOLD, WARNING_THRESHOLD], "color": "#3d2f10"},
+                    {"range": [WARNING_THRESHOLD, max_value], "color": "#10331b"},
+                ],
+                "threshold": {
+                    "line": {"color": "white", "width": 3},
+                    "thickness": 0.8,
+                    "value": rul_value,
+                },
+            },
+        )
+    )
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
@@ -317,29 +338,39 @@ def make_gauge(rul_value, max_value=RUL_MAX):
     )
     return fig
 
+
 def predict_rul(model, feature_cols, row_df):
     """Run a single-row (or batch) prediction, aligning columns to the training feature order."""
     X = row_df[feature_cols]
     preds = model.predict(X)
     return np.clip(preds, 0, RUL_MAX)
 
+
 def kpi_card(label, value, sub=None):
     sub_html = f'<div class="kpi-sub">{sub}</div>' if sub else ""
-    st.markdown(f"""
+    st.markdown(
+        f"""
     <div class="kpi-card">
         <div class="kpi-label">{label}</div>
         <div class="kpi-value">{value}</div>
         {sub_html}
     </div>
-    """, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
+
 
 def app_header(title, subtitle):
-    st.markdown(f"""
+    st.markdown(
+        f"""
     <div class="app-header">
         <h1>{title}</h1>
         <p>{subtitle}</p>
     </div>
-    """, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
+
 
 # --------------------------------------------------------------------------
 # LOAD ARTIFACTS
@@ -390,15 +421,13 @@ with st.sidebar:
 
     st.markdown("---")
     st.markdown("### Model Specification")
-    st.markdown(
-        """
+    st.markdown("""
         - **Algorithm:** XGBoost Regressor
         - **Target:** Remaining Useful Life (RUL)
         - **Training data:** Merged FD001–FD004
         - **RUL cap:** 125 cycles (piecewise-linear degradation)
         - **Selected over:** Linear Regression, Decision Tree, Random Forest
-        """
-    )
+        """)
 
     with st.expander("ℹ️ Methodology"):
         st.markdown(
@@ -425,12 +454,15 @@ with st.sidebar:
     st.caption("Built as part of a Machine Learning graduation project.")
 
 if load_error:
-    st.markdown(f"""
+    st.markdown(
+        f"""
     <div class="diag-box">
     <b>⚠️ Model artifacts failed to load.</b><br><br>
     {load_error}
     </div>
-    """, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
     st.stop()
 
 has_unit_id = "unit_id" in test_df.columns
@@ -443,7 +475,9 @@ conf_label, conf_class = get_confidence_badge(confidence["r2"] if confidence els
 # Persistent model-confidence badge in the sidebar (visible on every page)
 with st.sidebar:
     st.markdown("### Model Confidence")
-    st.markdown(f'<span class="conf-badge {conf_class}">{conf_label}</span>', unsafe_allow_html=True)
+    st.markdown(
+        f'<span class="conf-badge {conf_class}">{conf_label}</span>', unsafe_allow_html=True
+    )
     if confidence:
         st.caption(f"RMSE {confidence['rmse']:.1f} cycles · MAE {confidence['mae']:.1f} cycles")
 
@@ -454,7 +488,7 @@ if page == "🏠 Fleet Overview":
     app_header(
         "Turbofan Fleet — Remaining Useful Life Overview",
         "Estimated operating cycles remaining before maintenance is required, "
-        "trained on NASA's C-MAPSS dataset (FD001–FD004, six operating conditions)."
+        "trained on NASA's C-MAPSS dataset (FD001–FD004, six operating conditions).",
     )
 
     c1, c2, c3, c4, c5 = st.columns(5)
@@ -468,7 +502,11 @@ if page == "🏠 Fleet Overview":
     with c4:
         kpi_card("RUL Cap", f"{RUL_MAX}", "cycles (piecewise-linear)")
     with c5:
-        kpi_card("Model Confidence", conf_label.split(" (")[0], conf_label[conf_label.find("("):] if "(" in conf_label else "")
+        kpi_card(
+            "Model Confidence",
+            conf_label.split(" (")[0],
+            conf_label[conf_label.find("(") :] if "(" in conf_label else "",
+        )
 
     st.markdown("###")
     st.subheader("Fleet Health — Predicted RUL by Engine")
@@ -481,7 +519,9 @@ if page == "🏠 Fleet Overview":
         fleet = preview.groupby("unit_id", as_index=False)["Predicted_RUL"].min()
         fleet["Status"] = fleet["Predicted_RUL"].apply(lambda v: get_health_status(v)[0])
     else:
-        fleet = preview[["Predicted_RUL", "Status"]].reset_index().rename(columns={"index": "unit_id"})
+        fleet = (
+            preview[["Predicted_RUL", "Status"]].reset_index().rename(columns={"index": "unit_id"})
+        )
 
     color_map = {"CRITICAL": "#ff6b6b", "WARNING": "#ffb84d", "HEALTHY": "#4ade80"}
 
@@ -489,13 +529,17 @@ if page == "🏠 Fleet Overview":
     with col_bar:
         fig = px.bar(
             fleet.sort_values("Predicted_RUL"),
-            x="unit_id", y="Predicted_RUL", color="Status",
+            x="unit_id",
+            y="Predicted_RUL",
+            color="Status",
             color_discrete_map=color_map,
             labels={"unit_id": "Engine", "Predicted_RUL": "Predicted RUL (cycles)"},
         )
         fig.update_layout(
-            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-            font={"color": "#f2f4f8"}, height=420,
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font={"color": "#f2f4f8"},
+            height=420,
             xaxis={"showticklabels": False},
             legend_title_text="",
         )
@@ -503,14 +547,20 @@ if page == "🏠 Fleet Overview":
 
     with col_hist:
         hist_fig = px.histogram(
-            fleet, x="Predicted_RUL", color="Status", nbins=25,
+            fleet,
+            x="Predicted_RUL",
+            color="Status",
+            nbins=25,
             color_discrete_map=color_map,
             labels={"Predicted_RUL": "Predicted RUL (cycles)"},
         )
         hist_fig.update_layout(
-            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-            font={"color": "#f2f4f8"}, height=420,
-            legend_title_text="", showlegend=False,
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font={"color": "#f2f4f8"},
+            height=420,
+            legend_title_text="",
+            showlegend=False,
             title="Distribution of Predicted RUL",
         )
         st.plotly_chart(hist_fig, use_container_width=True)
@@ -535,10 +585,15 @@ if page == "🏠 Fleet Overview":
 # PAGE: ENGINE DIAGNOSTICS
 # ==========================================================================
 elif page == "🔧 Engine Diagnostics":
-    app_header("Single Engine Diagnostics", "Inspect predicted health for one engine from the fleet sample.")
+    app_header(
+        "Single Engine Diagnostics",
+        "Inspect predicted health for one engine from the fleet sample.",
+    )
 
     if has_unit_id:
-        selected_unit = st.selectbox("Select Engine (unit_id)", sorted(test_df["unit_id"].unique()[:200]))
+        selected_unit = st.selectbox(
+            "Select Engine (unit_id)", sorted(test_df["unit_id"].unique()[:200])
+        )
         unit_rows = test_df[test_df["unit_id"] == selected_unit].copy()
         if has_cycle:
             unit_rows = unit_rows.sort_values("cycle")
@@ -557,12 +612,15 @@ elif page == "🔧 Engine Diagnostics":
         st.plotly_chart(make_gauge(predicted_rul), use_container_width=True)
 
     with col_info:
-        st.markdown(f"""
+        st.markdown(
+            f"""
         <div class="kpi-card" style="margin-bottom:1rem;">
             <div class="kpi-label">Predicted Remaining Useful Life</div>
             <div class="kpi-value">{predicted_rul:.1f} cycles</div>
         </div>
-        """, unsafe_allow_html=True)
+        """,
+            unsafe_allow_html=True,
+        )
 
         st.markdown(
             f'<span class="status-badge {badge_class}">{icon} {status_label}</span>'
@@ -581,8 +639,11 @@ elif page == "🔧 Engine Diagnostics":
         if has_actual_rul:
             actual_rul = float(current_row["RUL"].values[0])
             error = predicted_rul - actual_rul
-            st.metric("Actual RUL (ground truth)", f"{actual_rul:.1f} cycles",
-                       delta=f"{error:+.1f} prediction error")
+            st.metric(
+                "Actual RUL (ground truth)",
+                f"{actual_rul:.1f} cycles",
+                delta=f"{error:+.1f} prediction error",
+            )
 
     if has_cycle and len(unit_rows) > 1:
         st.markdown("---")
@@ -592,12 +653,16 @@ elif page == "🔧 Engine Diagnostics":
             sensor_choice = st.multiselect("Sensors to display", plottable, default=plottable[:2])
             if sensor_choice:
                 trend_fig = px.line(
-                    unit_rows, x="cycle", y=sensor_choice,
+                    unit_rows,
+                    x="cycle",
+                    y=sensor_choice,
                     labels={"cycle": "Cycle", "value": "Sensor Reading"},
                 )
                 trend_fig.update_layout(
-                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                    font={"color": "#f2f4f8"}, height=380,
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    font={"color": "#f2f4f8"},
+                    height=380,
                 )
                 st.plotly_chart(trend_fig, use_container_width=True)
 
@@ -608,7 +673,10 @@ elif page == "🔧 Engine Diagnostics":
 # PAGE: SENSITIVITY SIMULATOR
 # ==========================================================================
 elif page == "🧪 Sensitivity Simulator":
-    app_header("What-If Sensor Simulator", "Adjust the most influential sensor readings and watch the predicted RUL update live. All other features are held at the dataset median.")
+    app_header(
+        "What-If Sensor Simulator",
+        "Adjust the most influential sensor readings and watch the predicted RUL update live. All other features are held at the dataset median.",
+    )
 
     importance_df = get_feature_importance(model, feature_cols)
     top_features = importance_df.head(8)["feature"].tolist()
@@ -626,7 +694,10 @@ elif page == "🧪 Sensitivity Simulator":
         f_default = float(baseline[feat])
         with col:
             sim_values[feat] = st.slider(
-                feat, min_value=f_min, max_value=f_max, value=f_default,
+                feat,
+                min_value=f_min,
+                max_value=f_max,
+                value=f_default,
                 key=f"sim_{feat}",
             )
 
@@ -639,12 +710,15 @@ elif page == "🧪 Sensitivity Simulator":
     with c1:
         st.plotly_chart(make_gauge(sim_pred), use_container_width=True)
     with c2:
-        st.markdown(f"""
+        st.markdown(
+            f"""
         <div class="kpi-card">
             <div class="kpi-label">Simulated Predicted RUL</div>
             <div class="kpi-value">{sim_pred:.1f} cycles</div>
         </div>
-        """, unsafe_allow_html=True)
+        """,
+            unsafe_allow_html=True,
+        )
         st.markdown(
             f'<br><span class="status-badge {badge_class}">{icon} {status_label}</span>',
             unsafe_allow_html=True,
@@ -662,7 +736,10 @@ elif page == "🧪 Sensitivity Simulator":
 # PAGE: BATCH PREDICTION
 # ==========================================================================
 elif page == "📊 Batch Prediction":
-    app_header("Batch Prediction", "Upload a CSV containing the required feature columns to score multiple engines at once.")
+    app_header(
+        "Batch Prediction",
+        "Upload a CSV containing the required feature columns to score multiple engines at once.",
+    )
 
     with st.expander("Required columns"):
         st.code(", ".join(feature_cols))
@@ -699,13 +776,16 @@ elif page == "📊 Batch Prediction":
             display_cols = id_cols + ["Predicted_RUL", "Status"]
 
             def color_status(val):
-                if val == 'CRITICAL': return 'color: #ff6b6b'
-                elif val == 'WARNING': return 'color: #ffb84d'
-                elif val == 'HEALTHY': return 'color: #4ade80'
-                return ''
+                if val == "CRITICAL":
+                    return "color: #ff6b6b"
+                elif val == "WARNING":
+                    return "color: #ffb84d"
+                elif val == "HEALTHY":
+                    return "color: #4ade80"
+                return ""
 
             st.dataframe(
-                batch_df[display_cols].style.map(color_status, subset=['Status']),
+                batch_df[display_cols].style.map(color_status, subset=["Status"]),
                 use_container_width=True,
                 height=420,
             )
@@ -722,9 +802,15 @@ elif page == "📊 Batch Prediction":
 # PAGE: MODEL INSIGHTS & VALIDATION
 # ==========================================================================
 elif page == "📈 Model Insights & Validation":
-    app_header("Model Insights & Validation", "Explainability and performance evidence supporting the model-confidence rating shown throughout the app.")
+    app_header(
+        "Model Insights & Validation",
+        "Explainability and performance evidence supporting the model-confidence rating shown throughout the app.",
+    )
 
-    st.markdown(f'<span class="conf-badge {conf_class}" style="font-size:0.95rem;">{conf_label}</span>', unsafe_allow_html=True)
+    st.markdown(
+        f'<span class="conf-badge {conf_class}" style="font-size:0.95rem;">{conf_label}</span>',
+        unsafe_allow_html=True,
+    )
     st.markdown("###")
 
     importance_df = get_feature_importance(model, feature_cols)
@@ -733,22 +819,26 @@ elif page == "📈 Model Insights & Validation":
     top15 = importance_df.head(15)
     fig = px.bar(
         top15.sort_values("importance"),
-        x="importance", y="feature", orientation="h",
-        color="importance", color_continuous_scale="Teal",
+        x="importance",
+        y="feature",
+        orientation="h",
+        color="importance",
+        color_continuous_scale="Teal",
     )
     fig.update_layout(
-        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        font={"color": "#f2f4f8"}, height=520, coloraxis_showscale=False,
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font={"color": "#f2f4f8"},
+        height=520,
+        coloraxis_showscale=False,
     )
     st.plotly_chart(fig, use_container_width=True)
 
-    st.markdown(
-        """
+    st.markdown("""
         **Why this matters:** operating condition context (`op_setting_1/2/3`) combined with raw
         and rolling sensor statistics allows XGBoost to learn condition-dependent degradation
         patterns without explicit regime clustering — the core scientific argument of this project.
-        """
-    )
+        """)
 
     if has_actual_rul and confidence:
         st.markdown("---")
@@ -771,34 +861,47 @@ elif page == "📈 Model Insights & Validation":
 
         with col_scatter:
             scatter_fig = px.scatter(
-                x=actual, y=preds, opacity=0.4,
+                x=actual,
+                y=preds,
+                opacity=0.4,
                 labels={"x": "Actual RUL", "y": "Predicted RUL"},
                 title="Predicted vs Actual RUL",
             )
             scatter_fig.add_shape(
-                type="line", x0=0, y0=0, x1=RUL_MAX, y1=RUL_MAX,
+                type="line",
+                x0=0,
+                y0=0,
+                x1=RUL_MAX,
+                y1=RUL_MAX,
                 line=dict(color="white", dash="dash"),
             )
             scatter_fig.update_layout(
-                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                font={"color": "#f2f4f8"}, height=420,
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                font={"color": "#f2f4f8"},
+                height=420,
             )
             st.plotly_chart(scatter_fig, use_container_width=True)
 
         with col_resid:
             resid_fig = px.histogram(
-                x=residuals, nbins=40,
+                x=residuals,
+                nbins=40,
                 labels={"x": "Residual (Actual − Predicted)"},
                 title="Residual Distribution",
             )
             resid_fig.add_vline(x=0, line_dash="dash", line_color="white")
             resid_fig.update_layout(
-                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                font={"color": "#f2f4f8"}, height=420,
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                font={"color": "#f2f4f8"},
+                height=420,
             )
             st.plotly_chart(resid_fig, use_container_width=True)
     else:
-        st.info("Ground-truth RUL is not available in this sample, so performance metrics and residual plots are not shown.")
+        st.info(
+            "Ground-truth RUL is not available in this sample, so performance metrics and residual plots are not shown."
+        )
 
 # --------------------------------------------------------------------------
 # FOOTER
